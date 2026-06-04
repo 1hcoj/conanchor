@@ -63,7 +63,9 @@ type conanchorProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type conanchorMapSpecs struct {
-	Events *ebpf.MapSpec `ebpf:"events"`
+	Events        *ebpf.MapSpec `ebpf:"events"`
+	FilterEnabled *ebpf.MapSpec `ebpf:"filter_enabled"`
+	TargetCgroups *ebpf.MapSpec `ebpf:"target_cgroups"`
 }
 
 // conanchorVariableSpecs contains global variables before they are loaded into the kernel.
@@ -92,12 +94,16 @@ func (o *conanchorObjects) Close() error {
 //
 // It can be passed to loadConanchorObjects or ebpf.CollectionSpec.LoadAndAssign.
 type conanchorMaps struct {
-	Events *ebpf.Map `ebpf:"events"`
+	Events        *ebpf.Map `ebpf:"events"`
+	FilterEnabled *ebpf.Map `ebpf:"filter_enabled"`
+	TargetCgroups *ebpf.Map `ebpf:"target_cgroups"`
 }
 
 func (m *conanchorMaps) Close() error {
 	return _ConanchorClose(
 		m.Events,
+		m.FilterEnabled,
+		m.TargetCgroups,
 	)
 }
 

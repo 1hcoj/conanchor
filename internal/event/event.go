@@ -48,7 +48,7 @@ func Classify(e *Event) {
 			e.Policy = "wget-exec"
 		}
 	case EventFileOpen:
-		if strings.HasPrefix(e.Path, "/var/run/secrets/") {
+		if isK8sSecretPath(e.Path) {
 			e.Risk = "high"
 			e.Policy = "k8s-secret-access"
 		}
@@ -71,6 +71,10 @@ func ShouldEmit(e Event) bool {
 	default:
 		return false
 	}
+}
+
+func isK8sSecretPath(path string) bool {
+	return strings.HasPrefix(path, "/var/run/secrets/") || strings.HasPrefix(path, "/run/secrets/")
 }
 
 func suspiciousMountPath(path string) bool {

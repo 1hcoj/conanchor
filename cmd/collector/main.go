@@ -2,10 +2,13 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/cilium/ebpf"
@@ -20,13 +23,15 @@ import (
 
 func main() {
 	log.SetFlags(0)
+	targetCgroupIDs := flag.String("target-cgroup-id", os.Getenv("CONANCHOR_TARGET_CGROUP_ID"), "comma-separated cgroup IDs to monitor in kernel space; empty monitors all cgroups")
+	flag.Parse()
 
-	if err := run(); err != nil {
+	if err := run(*targetCgroupIDs); err != nil {
 		log.Fatalf("collector: %v", err)
 	}
 }
 
-func run() error {
+func run(targetCgroupIDs string) error {
 	if err := rlimit.RemoveMemlock(); err != nil {
 		return fmt.Errorf("remove memlock rlimit: %w", err)
 	}
@@ -36,6 +41,10 @@ func run() error {
 		return fmt.Errorf("load bpf objects: %w", err)
 	}
 	defer objs.Close()
+
+	if err := configureTargetCgroups(&objs, targetCgroupIDs); err != nil {
+		return err
+	}
 
 	links, err := attachLSMPrograms(&objs)
 	if err != nil {
@@ -87,6 +96,52 @@ func run() error {
 			return err
 		}
 	}
+}
+
+func configureTargetCgroups(objs *conanchorObjects, csv string) error {
+	ids, err := parseCgroupIDs(csv)
+	if err != nil {
+		return err
+	}
+
+	var zero uint32
+	enabled := uint32(0)
+	if len(ids) > 0 {
+		enabled = 1
+	}
+	if err := objs.FilterEnabled.Update(zero, enabled, ebpf.UpdateAny); err != nil {
+		return fmt.Errorf("configure cgroup filter state: %w", err)
+	}
+
+	for _, id := range ids {
+		allowed := uint8(1)
+		if err := objs.TargetCgroups.Update(id, allowed, ebpf.UpdateAny); err != nil {
+			return fmt.Errorf("configure target cgroup %d: %w", id, err)
+		}
+	}
+	return nil
+}
+
+func parseCgroupIDs(csv string) ([]uint64, error) {
+	csv = strings.TrimSpace(csv)
+	if csv == "" {
+		return nil, nil
+	}
+
+	parts := strings.Split(csv, ",")
+	ids := make([]uint64, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		id, err := strconv.ParseUint(part, 10, 64)
+		if err != nil || id == 0 {
+			return nil, fmt.Errorf("invalid cgroup id %q", part)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 func attachLSMPrograms(objs *conanchorObjects) ([]link.Link, error) {

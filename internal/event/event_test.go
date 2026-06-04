@@ -9,7 +9,8 @@ func TestClassify(t *testing.T) {
 		policy string
 	}{
 		{name: "wget exec", event: Event{EventType: EventExec, Comm: "wget", Path: "/usr/bin/wget"}, policy: "wget-exec"},
-		{name: "secret open", event: Event{EventType: EventFileOpen, Path: "/var/run/secrets/kubernetes.io/serviceaccount/token"}, policy: "k8s-secret-access"},
+		{name: "secret open var run", event: Event{EventType: EventFileOpen, Path: "/var/run/secrets/kubernetes.io/serviceaccount/token"}, policy: "k8s-secret-access"},
+		{name: "secret open run", event: Event{EventType: EventFileOpen, Path: "/run/secrets/kubernetes.io/serviceaccount/token"}, policy: "k8s-secret-access"},
 		{name: "proc mount", event: Event{EventType: EventMount, Path: "/proc", Extra: "proc"}, policy: "suspicious-mount"},
 	}
 

@@ -12,7 +12,7 @@ This MVP does not implement Merkle trees, blockchain anchoring, or event blockin
 
 ## Container Identity
 
-Events include `cgroup_id` from `bpf_get_current_cgroup_id()`. For this MVP, `cgroup_id` is the only kernel-collected container correlation key.
+Events include `cgroup_id` from `bpf_get_current_cgroup_id()`. For this MVP, `cgroup_id` is the only kernel-collected container correlation key. The collector can also configure a kernel-side cgroup allowlist so the eBPF programs emit events only for selected target container cgroup IDs.
 
 The user-space resolver reads `/proc/<pid>/cgroup` and extracts containerd/Kubernetes style IDs on a best-effort basis:
 
@@ -57,6 +57,20 @@ or:
 ```sh
 make run
 ```
+
+To record events only for one target container cgroup ID, pass the decimal `cgroup_id` captured from a previous event or obtained from your runtime/cgroup inspection:
+
+```sh
+sudo ./bin/collector -target-cgroup-id 123456789
+```
+
+Multiple targets can be comma-separated:
+
+```sh
+sudo ./bin/collector -target-cgroup-id 123456789,987654321
+```
+
+The same value can be configured with `CONANCHOR_TARGET_CGROUP_ID`. When no target is configured, the kernel program monitors all cgroups.
 
 ## Example Output
 

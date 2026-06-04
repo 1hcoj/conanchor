@@ -12,7 +12,36 @@ struct {
 	__uint(max_entries, 1 << 24);
 } events SEC(".maps");
 
-static __always_inline void fill_common(struct event *evt, __u32 event_type, int ret)
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, 1024);
+	__type(key, __u64);
+	__type(value, __u8);
+} target_cgroups SEC(".maps");
+
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, __u32);
+	__type(value, __u32);
+} filter_enabled SEC(".maps");
+
+static __always_inline int should_trace_cgroup(__u64 *cgroup_id)
+{
+	__u32 zero = 0;
+	__u32 *enabled = NULL;
+	__u8 *allowed = NULL;
+
+	*cgroup_id = bpf_get_current_cgroup_id();
+	enabled = bpf_map_lookup_elem(&filter_enabled, &zero);
+	if (!enabled || *enabled == 0)
+		return 1;
+
+	allowed = bpf_map_lookup_elem(&target_cgroups, cgroup_id);
+	return allowed != NULL;
+}
+
+static __always_inline void fill_common(struct event *evt, __u32 event_type, int ret, __u64 cgroup_id)
 {
 	__u64 pid_tgid = bpf_get_current_pid_tgid();
 	__u64 uid_gid = bpf_get_current_uid_gid();
@@ -23,7 +52,7 @@ static __always_inline void fill_common(struct event *evt, __u32 event_type, int
 	evt->tgid = pid_tgid >> 32;
 	evt->uid = (__u32)uid_gid;
 	evt->gid = uid_gid >> 32;
-	evt->cgroup_id = bpf_get_current_cgroup_id();
+	evt->cgroup_id = cgroup_id;
 	evt->retval = ret;
 	bpf_get_current_comm(&evt->comm, sizeof(evt->comm));
 }
@@ -54,9 +83,14 @@ static __always_inline int contains_wget(const char *s)
 
 static __always_inline int path_is_k8s_secret(const char *path)
 {
-	const char prefix[] = "/var/run/secrets/";
+	const char varrun_prefix[] = "/var/run/secrets/";
+	const char run_prefix[] = "/run/secrets/";
 
-	return starts_with(path, prefix, sizeof(prefix) - 1);
+	if (starts_with(path, varrun_prefix, sizeof(varrun_prefix) - 1))
+		return 1;
+	if (starts_with(path, run_prefix, sizeof(run_prefix) - 1))
+		return 1;
+	return 0;
 }
 
 static __always_inline int target_is_suspicious(const char *path)
@@ -100,8 +134,11 @@ int BPF_PROG(handle_bprm_check_security, struct linux_binprm *bprm, int ret)
 {
 	const char *filename = NULL;
 	char path[MAX_PATH_LEN] = {};
+	__u64 cgroup_id = 0;
 
 	if (ret)
+		return ret;
+	if (!should_trace_cgroup(&cgroup_id))
 		return ret;
 
 	filename = BPF_CORE_READ(bprm, filename);
@@ -115,7 +152,7 @@ int BPF_PROG(handle_bprm_check_security, struct linux_binprm *bprm, int ret)
 	if (!evt)
 		return ret;
 
-	fill_common(evt, EVENT_EXEC, ret);
+	fill_common(evt, EVENT_EXEC, ret, cgroup_id);
 	__builtin_memcpy(evt->path, path, sizeof(evt->path));
 	bpf_ringbuf_submit(evt, 0);
 	return ret;
@@ -126,8 +163,11 @@ int BPF_PROG(handle_file_open, struct file *file, int ret)
 {
 	char path[MAX_PATH_LEN] = {};
 	__u32 f_flags = 0;
+	__u64 cgroup_id = 0;
 
 	if (ret)
+		return ret;
+	if (!should_trace_cgroup(&cgroup_id))
 		return ret;
 
 	if (file) {
@@ -143,7 +183,7 @@ int BPF_PROG(handle_file_open, struct file *file, int ret)
 	if (!evt)
 		return ret;
 
-	fill_common(evt, EVENT_FILE_OPEN, ret);
+	fill_common(evt, EVENT_FILE_OPEN, ret, cgroup_id);
 	__builtin_memcpy(evt->path, path, sizeof(evt->path));
 	evt->flags = f_flags;
 	bpf_ringbuf_submit(evt, 0);
@@ -155,15 +195,18 @@ int BPF_PROG(handle_sb_mount, const char *dev_name, const struct path *path, con
 	     unsigned long flags, void *data, int ret)
 {
 	int suspicious = 0;
+	__u64 cgroup_id = 0;
 
 	if (ret)
+		return ret;
+	if (!should_trace_cgroup(&cgroup_id))
 		return ret;
 
 	struct event *evt = bpf_ringbuf_reserve(&events, sizeof(*evt), 0);
 	if (!evt)
 		return ret;
 
-	fill_common(evt, EVENT_MOUNT, ret);
+	fill_common(evt, EVENT_MOUNT, ret, cgroup_id);
 	if (path)
 		bpf_d_path((struct path *)path, evt->path, sizeof(evt->path));
 
