@@ -1,0 +1,18 @@
+customRules:
+  k8s_serviceaccount_token.yaml: |-
+    - rule: Read Kubernetes ServiceAccount Token
+      desc: Detect reads of Kubernetes service account token inside a container
+      condition: >
+        evt.type in (open, openat, openat2) and
+        evt.is_open_read=true and
+        fd.name=/var/run/secrets/kubernetes.io/serviceaccount/token
+      output: >
+        Kubernetes service account token was read
+        user=%user.name
+        command=%proc.cmdline
+        container_id=%container.id
+        container_name=%container.name
+        image=%container.image.repository
+        file=%fd.name
+      priority: WARNING
+      tags: [kubernetes, credential_access, serviceaccount, token]

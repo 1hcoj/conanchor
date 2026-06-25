@@ -37,7 +37,14 @@ echo "  data_dir:     $DATA_DIR"
 echo "  container_id: $CONTAINER_ID"
 echo "  raw_logs:     $LOG_FILE"
 echo "  batches:      $BATCH_DIR"
-echo "  ledger:       $LEDGER_FILE"
+if [[ "$LEDGER_BACKEND" == "besu" ]]; then
+  echo "  ledger:       besu"
+  echo "  rpc_url:      $BESU_RPC_URL"
+  echo "  chain_id:     $BESU_CHAIN_ID"
+  echo "  contract:     $BESU_CONTRACT_ADDRESS"
+else
+  echo "  ledger:       $LEDGER_FILE"
+fi
 echo "  range:        $FROM_BATCH..$TO_BATCH"
 echo
 
@@ -45,4 +52,8 @@ go run ./cmd/verifier \
   --data-dir "$DATA_DIR" \
   --container-instance-id "$CONTAINER_ID" \
   --from-batch "$FROM_BATCH" \
-  --to-batch "$TO_BATCH"
+  --to-batch "$TO_BATCH" \
+  --ledger-backend "$LEDGER_BACKEND" \
+  --besu-rpc-url "$BESU_RPC_URL" \
+  --besu-chain-id "$BESU_CHAIN_ID" \
+  --besu-contract-address "$BESU_CONTRACT_ADDRESS"
