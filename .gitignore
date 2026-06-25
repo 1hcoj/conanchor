@@ -1,0 +1,18 @@
+# Build outputs
+/bin/
+/build/
+
+# Runtime/demo data
+/data/
+
+# Generated eBPF artifacts
+bpf/vmlinux.h
+cmd/collector/conanchor_bpf*.go
+cmd/collector/conanchor_bpf*.o
+
+# Local environment and secrets
+.env
+.env.*
+*.pem
+*.key
+*.log
